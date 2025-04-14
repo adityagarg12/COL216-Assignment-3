@@ -250,13 +250,6 @@ void Cache::access(char op, unsigned int address, int cycle) {
             
         }
 
-        
-
-        
-
-
-        // Simulate broadcast of miss to other cores (snooping)
-        // Needs global coordination: currently placeholder
     }
 }
 
