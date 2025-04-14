@@ -311,11 +311,75 @@ void Cache::print_stats() {
     cout << "------------------------\n";
 }
 
+void print_help() {
+    cout << "\n";   
+    cout << "  -t <tracefile>:  name of parallel application (e.g., app1) whose 4 traces are to be used in simulation\n";
+    cout << "  -s <s>:    number of set index bits (number of sets in the cache = S = 2^s)\n";
+    cout << "  -E <E>:    associativity (number of cache lines per set)\n";
+    cout << "  -b <b>:    number of block bits (block size = B = 2^b)\n";
+    cout << "  -o: <outfilename> logs output in file for plotting etc.\n";
+    cout << "  -h:     prints this help \n";
+    // cout << "\n";
+    // cout << "Example: ./L1simulate -t app1 -s 5 -E 4 -b 6 -o output.txt\n";
+}
+
 // Add global bus coordinator and per-core trace handling
 
 int main(int argc, char* argv[]) {
-    // Placeholder: parse args, load traces, simulate per-core accesses
-    cout << "L1 Cache Simulator starting...\n";
+    // Placeholder for argument parsing (assuming arguments are correct)
+    
+    if (argc == 2 && string(argv[1]) == "-h") {
+        print_help();
+        return 0;
+    }
+
+    if (argc != 6) {
+        cout << "Usage: ./L1simulate -t <tracefile> -s <s> -E <E> -b <b> -o <outfilename>" << endl;
+        return 1;
+    }
+
+    string tracefile_prefix = argv[2];
+    int s_bits = atoi(argv[4]);
+    int E_assoc = atoi(argv[6]);
+    int b_bits = atoi(argv[8]);
+    string out_filename = argv[10];
+    
+    // Create BusManager and caches
+    BusManager bus_manager;
+
+    vector<Cache*> cores;
+    for (int i = 0; i < 4; ++i) {
+        cores.push_back(new Cache(s_bits, E_assoc, b_bits, i, &bus_manager));
+        bus_manager.register_core(cores[i]);
+    }
+
+    // Read the trace files and simulate
+    for (int i = 0; i < 4; ++i) {
+        stringstream ss;
+        ss << tracefile_prefix << " proc" << i << ".trace";
+        string filename = ss.str();
+        ifstream trace_file(filename.c_str());
+        if (!trace_file) {
+            cerr << "Error opening trace file: " << filename << endl;
+            return 1;
+        }
+
+        string line;
+        int cycle = 0;
+        while (getline(trace_file, line)) {
+            stringstream ss(line);
+            char op;
+            unsigned int address;
+            ss >> op >> hex >> address;
+
+            cores[i]->access(op, address, cycle++);
+        }
+    }
+
+    // Print stats for each core
+    for (int i = 0; i < 4; ++i) {
+        cores[i]->print_stats();
+    }
 
     return 0;
 }
