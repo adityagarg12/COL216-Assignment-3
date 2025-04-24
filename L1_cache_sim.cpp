@@ -354,32 +354,44 @@ int main(int argc, char* argv[]) {
     }
 
     // Read the trace files and simulate
-    for (int i = 0; i < 4; ++i) {
-        stringstream ss;
-        ss << tracefile_prefix << " proc" << i << ".trace";
-        string filename = ss.str();
-        ifstream trace_file(filename.c_str());
-        if (!trace_file) {
-            cerr << "Error opening trace file: " << filename << endl;
-            return 1;
-        }
+    // Open all trace files first
+ifstream trace_files[4];
+for (int i = 0; i < 4; ++i) {
+    stringstream ss;
+    ss << tracefile_prefix << " proc" << i << ".trace";
+    string filename = ss.str();
+    trace_files[i].open(filename.c_str());
+    if (!trace_files[i]) {
+        cerr << "Error opening trace file: " << filename << endl;
+        return 1;
+    }
+}
 
+// Process operations in parallel
+bool done = false;
+int cycle = 0;
+while (!done) {
+    done = true;  // Assume we're done unless we find a line to process
+    
+    for (int i = 0; i < 4; ++i) {
         string line;
-        int cycle = 0;
-        while (getline(trace_file, line)) {
+        if (getline(trace_files[i], line)) {
+            done = false;  // Not done yet
             stringstream ss(line);
             char op;
             unsigned int address;
             ss >> op >> hex >> address;
-
-            cores[i]->access(op, address, cycle++);
+            
+            cores[i]->access(op, address, cycle);
         }
     }
+    
+    cycle++;  // Move to next cycle after all cores processed one operation
+}
 
-    // Print stats for each core
-    for (int i = 0; i < 4; ++i) {
-        cores[i]->print_stats();
-    }
-
+// Close all trace files
+for (int i = 0; i < 4; ++i) {
+    trace_files[i].close();
+}
     return 0;
 }
