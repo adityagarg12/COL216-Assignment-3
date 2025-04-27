@@ -34,16 +34,37 @@ public:
     // int invalidation_count = 0;
     unsigned long long data_traffic_bytes = 0;
     int bus_transactions = 0;
+    bool bus_busy = false;
+    int bus_busy_until_cycle = 0;
+    unsigned int current_bus_addr = 0;
+    int current_bus_owner = -1;
     void register_core(Cache* c) {
         cores.push_back(c);
     }
     
-    bool broadcast_BusRd(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation);
-    bool broadcast_BusRdX(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation);
-    void broadcast_Invalidate(int from_core_id, unsigned int addr, int& cycles_of_operation);
+    bool try_acquire_bus(int core_id, unsigned int addr, int current_cycle) {
+        if (bus_busy_until_cycle < current_cycle) { // changed <= to < 
+            // Bus is free
+            // bus_busy = true;
+            current_bus_addr = addr;
+            current_bus_owner = core_id;
+            return true;
+        }
+        return false;
+    }
+    
+    void release_bus(int release_cycle) {
+        bus_busy = false;
+        bus_busy_until_cycle = release_cycle;
+        current_bus_owner = -1;
+    }
+
+    bool broadcast_BusRd(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation, int current_cycle, bool& bus_busy_flag);
+    bool broadcast_BusRdX(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation, int current_cycle, bool& bus_busy_flag);
+    void broadcast_Invalidate(int from_core_id, unsigned int addr, int& cycles_of_operation, int current_cycle, bool& bus_busy_flag);
     
     // int get_invalidations() const { return invalidation_count; }
-    unsigned long long get_data_traffic() const { return data_traffic_bytes; }
+    unsigned long long get_data_traffic() const { return data_traffic_bytes; } //NOT using this yet
 };
 
 struct CacheLine {
@@ -168,12 +189,12 @@ int Cache::access(char op, unsigned int address) {
     unsigned int index = get_index(address);
     unsigned int tag = get_tag(address);
     CacheSet& set = sets[index];
-    // total_cycles++; // Increment total cycles for each access
-    int cycles_for_operation = 1; 
+    total_cycles++; // Increment total cycles for each access
+    int cycles_for_operation = 0; 
     
-    accesses++;
-    if (op == 'R') reads++;
-    else writes++;
+    // accesses++;
+    // if (op == 'R') reads++;
+    // else writes++;
 
     int line_idx = find_line(set, tag);
 
@@ -184,24 +205,50 @@ int Cache::access(char op, unsigned int address) {
         if (op == 'W') {
             if (line.state == SHARED) {
                 S_to_M++;
-                bus->broadcast_Invalidate(core_id, address,cycles_for_operation);
+
+                int temp_cycles = 0;
+                bool busy_bus_flag = false;
+                bus->broadcast_Invalidate(core_id, address, temp_cycles, total_cycles,busy_bus_flag);
+                
+                // if (temp_cycles == 0) {
+                //     // Bus was busy, need to retry
+                //     return -1; // Special return value to indicate retry needed
+                // }
+
+                if (busy_bus_flag) {
+                    // Bus was busy, need to retry
+                    idle_cycles++;
+                    return -1; // Special return value to indicate retry needed
+                }
+                
+                cycles_for_operation += temp_cycles; //Not needed i guesss
+                // bus->broadcast_Invalidate(core_id, address,cycles_for_operation);
                 line.state = MODIFIED;
                 line.dirty = true;
             } else if (line.state == EXCLUSIVE) {
                 E_to_M++;
                 line.state = MODIFIED;
                 line.dirty = true;
+
             }
             // If already MODIFIED, stay in MODIFIED
+            writes++;
+            accesses++;
         }
+        else {
+            reads++;
+            accesses++;
+        }
+
         
         update_lru(set, line_idx);
-        cycles_for_operation = 1; // Cache hit takes 1 cycle
+        // cycles_for_operation = 1; // Cache hit takes 1 cycle
+        cycles_for_operation = 0; // Cache hit takes 0 cycles (already counted in total_cycles) Can be changed
     } else {
         // Cache miss
-        misses++;
-        if (op == 'R') read_misses++;
-        else write_misses++;
+        // misses++;
+        // if (op == 'R') read_misses++;
+        // else write_misses++;
         
         int victim = get_victim_line(set);
         CacheLine& line = set.lines[victim];
@@ -220,7 +267,21 @@ int Cache::access(char op, unsigned int address) {
         
         if (op == 'R') {
             // Check if other cores have this cache line
-            bool shared = bus->broadcast_BusRd(core_id, address, block_size,cycles_for_operation);
+            bool busy_bus_flag = false;
+            bool shared = bus->broadcast_BusRd(core_id, address, block_size,cycles_for_operation,total_cycles,busy_bus_flag);
+            // if (cycles_for_operation == 0) {
+            //     // Bus was busy, need to retry
+            //     return -1;
+            // }
+            if (busy_bus_flag) {
+                // Bus was busy, need to retry
+                idle_cycles++;
+                return -1; // Special return value to indicate retry needed
+            }
+            misses++;
+            read_misses++;
+            reads++;
+            accesses++;
             data_traffic_bytes += block_size; // Data traffic for BusRd
             if (shared) {
                 line.state = SHARED;
@@ -233,10 +294,28 @@ int Cache::access(char op, unsigned int address) {
                 line.state = EXCLUSIVE;
                 line.dirty = false;
                 cycles_for_operation += 100; // Memory read takes 100 cycles
+                data_traffic_bytes += block_size; // Data traffic for memory read
                 idle_cycles += 100;
             }
         } else { // Write
-            bus->broadcast_BusRdX(core_id, address, block_size,cycles_for_operation);
+
+            bool busy_bus_flag = false;
+            bool result = bus->broadcast_BusRdX(core_id, address, block_size,cycles_for_operation,total_cycles,busy_bus_flag);
+            
+            // if (cycles_for_operation == 0) {
+            //     // Bus was busy, need to retry
+            //     return -1;
+            // }
+
+            if (busy_bus_flag) {
+                // Bus was busy, need to retry
+                idle_cycles++;
+                return -1; // Special return value to indicate retry needed
+            }
+            misses++;
+            write_misses++;
+            writes++;
+            accesses++;
             data_traffic_bytes += block_size; // Data traffic for BusRdX
             line.state = MODIFIED;
             line.dirty = true;
@@ -248,6 +327,8 @@ int Cache::access(char op, unsigned int address) {
     }
     
     total_cycles += cycles_for_operation;
+    cycles_for_operation++;
+    // total_cycles--;
     return cycles_for_operation;
 }
 
@@ -358,24 +439,52 @@ void Cache::print_stats(ostream& out) {
     out << "------------------------\n";
 }
 
-bool BusManager::broadcast_BusRd(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation) {
+bool BusManager::broadcast_BusRd(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation, int current_cycle, bool& bus_busy_flag) {
     bool shared = false;
     bus_transactions++;
+
+    if (!try_acquire_bus(from_core_id, addr, current_cycle)) {
+        // Bus is busy, operation must be retried
+        bus_busy_flag = true;
+        return false;
+    }
+
     for (Cache* core : cores) {
         if (core->core_id != from_core_id) {
             if (core->snoop(addr, 'R', from_core_id, block_size_bytes, cycles_of_operation)) {
                 shared = true;
-                data_traffic_bytes += block_size_bytes;
+                // data_traffic_bytes += block_size_bytes;
+                break; // Stop snooping if we find a hit
             }
         }
     }
+
+    int bus_release_cycle = current_cycle;
+    if (shared) {
+        // Cache to cache transfer
+        int words_per_block = block_size_bytes / 4; // 4 bytes per word
+        bus_release_cycle += words_per_block * 2;
+    } else {
+        // Memory access
+        // cycles_of_operation += 100; // Memory read takes 100 cycles
+        bus_release_cycle += 100;
+    }
+    
+    release_bus(bus_release_cycle);
     
     return shared;
 }
 
-bool BusManager::broadcast_BusRdX(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation) {
+bool BusManager::broadcast_BusRdX(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation, int current_cycle, bool& bus_busy_flag) {
     bool shared = false;
     bus_transactions++;
+
+    if (!try_acquire_bus(from_core_id, addr, current_cycle)) {
+        // Bus is busy, operation must be retried
+        bus_busy_flag = true;
+        return false;
+    }
+
     for (Cache* core : cores) {
         if (core->core_id != from_core_id) {
             if (core->snoop(addr, 'W', from_core_id, block_size_bytes, cycles_of_operation)) {
@@ -383,14 +492,24 @@ bool BusManager::broadcast_BusRdX(int from_core_id, unsigned int addr, int block
                 // data_traffic_bytes += block_size_bytes;
             }
         }
-        data_traffic_bytes += block_size_bytes; // Always add data traffic for BusRdX
     }
+
+    int bus_release_cycle = current_cycle + 100;
+    release_bus(bus_release_cycle);
     
     return shared;
 }
 
-void BusManager::broadcast_Invalidate(int from_core_id, unsigned int addr, int& cycles_of_operation) {
+void BusManager::broadcast_Invalidate(int from_core_id, unsigned int addr, int& cycles_of_operation, int current_cycle, bool& bus_busy_flag) {
     bus_transactions++;
+
+    if (!try_acquire_bus(from_core_id, addr, current_cycle)) {
+        // Bus is busy, operation must be retried
+        bus_busy_flag = true;
+        
+        return;
+    }
+
     for (Cache* core : cores) {
         if (core->core_id != from_core_id) {
             if (core->snoop(addr, 'I', from_core_id, 0, cycles_of_operation)) {
@@ -399,6 +518,9 @@ void BusManager::broadcast_Invalidate(int from_core_id, unsigned int addr, int& 
             }
         }
     }
+
+    int bus_release_cycle = current_cycle; // Invalidation is immediate
+    release_bus(bus_release_cycle);
 }
 
 void print_help() {
@@ -438,6 +560,7 @@ struct Event {
 };
 
 int main(int argc, char* argv[]) {
+
     char *tracefile_prefix = nullptr;
     int s_bits = 0;
     int E_assoc = 0;
@@ -553,16 +676,17 @@ int main(int argc, char* argv[]) {
     priority_queue<Event> event_queue;
     vector<size_t> trace_indices(4, 0);
     vector<bool> blocked(4, false);
-    int global_cycles = 0;
+    int global_cycles = 1;
     
     // Initialize event queue with the first operation from each core
     for (int i = 0; i < 4; ++i) {
         if (!traces[i].empty()) {
-            event_queue.push({0, i, trace_indices[i], false});
+            event_queue.push({1, i, trace_indices[i], false});
         }
     }
     
     while (!event_queue.empty()) {
+        printf("DEBUG: Global Cycle: %d\n", global_cycles);
         Event e = event_queue.top();
         event_queue.pop();
         
@@ -581,18 +705,24 @@ int main(int argc, char* argv[]) {
             if (!blocked[e.core_id]) {
                 Operation& op = traces[e.core_id][e.trace_idx];
                 int cycle_count = cores[e.core_id]->access(op.op, op.address);
-                
+                if (cycle_count == -1) {
+                    // Bus arbitration failed, need to retry
+                    // Schedule a retry in the next cycle
+                    event_queue.push({global_cycles + 1, e.core_id, e.trace_idx, false});
+                } 
+                else {
                 trace_indices[e.core_id]++;
                 
                 if (cycle_count > 1) {
                     // Operation takes multiple cycles, block the core
                     blocked[e.core_id] = true;
-                    event_queue.push({global_cycles + cycle_count, e.core_id, e.trace_idx, true});
+                    event_queue.push({global_cycles + cycle_count-1, e.core_id, e.trace_idx, true});
                 } else if (trace_indices[e.core_id] < traces[e.core_id].size()) {
                     // Operation took 1 cycle (cache hit), schedule next operation
                     event_queue.push({global_cycles + 1, e.core_id, trace_indices[e.core_id], false});
                 }
             }
+        }
         }
     }
     
@@ -636,6 +766,166 @@ int main(int argc, char* argv[]) {
         outfile.close();
         cout << "Results written to " << output_file << endl;
     }
-    
+
     return 0;
 }
+
+
+// int main() {
+
+//     // Hardcoded parameters
+//     const char *tracefile_prefix = "trace";
+//     int s_bits = 5;    // Example: 10 bits for the set index
+//     int E_assoc = 2;    // Example: 4-way associativity
+//     int b_bits = 5;     // Example: 6 bits for block size
+//     const char *output_file = "output.txt";
+//     bool output_to_file = true;
+    
+//     ofstream outfile;
+//     if (output_to_file) {
+//         outfile.open(output_file);
+//         if (!outfile) {
+//             cerr << "Error opening output file: " << output_file << endl;
+//             return 1;
+//         }
+//     }
+    
+//     ostream& out = output_to_file ? outfile : cout;
+    
+//     out << "Simulation Parameters:\n";
+//     out << "Trace Prefix: " << tracefile_prefix << "\n";
+//     out << "Set Index Bits: " << s_bits << "\n";
+//     out << "Associativity: " << E_assoc << "\n";
+//     out << "Block Bits: " << b_bits << "\n";
+//     out << "Block Size (Bytes): " << (1 << b_bits) << "\n";
+//     out << "Number of Sets: " << (1 << s_bits) << "\n";
+//     out << "Cache Size (KB per core): " << ((1 << s_bits) * E_assoc * (1 << b_bits)) / 1024 << " KB\n";
+//     out << "MESI Protocol: Enabled\n";
+//     out << "Write Policy: Write-back, Write-allocate\n";
+//     out << "Replacement Policy: LRU\n";
+//     out << "Bus: Central snooping bus\n";
+//     out << "------------------------\n";
+    
+//     BusManager bus_manager;
+//     vector<Cache*> cores;
+    
+//     for (int i = 0; i < 4; ++i) {
+//         cores.push_back(new Cache(s_bits, E_assoc, b_bits, i, &bus_manager));
+//         bus_manager.register_core(cores[i]);
+//     }
+    
+
+//     // Preprocess trace files
+//     vector<vector<Operation>> traces(4);
+
+//     traces[0] = {
+//         {'R', 0x7e1afe78}
+//     };
+//     traces[1] = {
+//         {'R', 0x7e1b0178}
+//     };
+//     traces[2] = {
+//         {'R', 0x7e1c0158}
+//     };
+//     traces[3] = {
+//         {'R', 0x7e1d0010}
+//     };
+
+    
+//     // Event-driven simulation
+//     priority_queue<Event> event_queue;
+//     vector<size_t> trace_indices(4, 0);
+//     vector<bool> blocked(4, false);
+//     int global_cycles = 1;
+    
+//     // Initialize event queue with the first operation from each core
+//     for (int i = 0; i < 4; ++i) {
+//         if (!traces[i].empty()) {
+//             event_queue.push({1, i, trace_indices[i], false});
+//         }
+//     }
+    
+//     while (!event_queue.empty()) {
+//         printf("DEBUG: Global Cycle: %d\n", global_cycles);
+//         Event e = event_queue.top();
+//         event_queue.pop();
+        
+//         global_cycles = max(global_cycles, e.cycle);
+        
+//         if (e.is_completion) {
+//             // Operation completed, core is no longer blocked
+//             blocked[e.core_id] = false;
+            
+//             // Schedule the next operation from this core
+//             if (trace_indices[e.core_id] < traces[e.core_id].size()) {
+//                 event_queue.push({global_cycles, e.core_id, trace_indices[e.core_id], false});
+//             }
+//         } else {
+//             // Starting a new operation
+//             if (!blocked[e.core_id]) {
+//                 Operation& op = traces[e.core_id][e.trace_idx];
+//                 int cycle_count = cores[e.core_id]->access(op.op, op.address);
+//                 if (cycle_count == -1) {
+//                     // Bus arbitration failed, need to retry
+//                     // Schedule a retry in the next cycle
+//                     event_queue.push({global_cycles + 1, e.core_id, e.trace_idx, false});
+//                 } 
+//                 else {
+//                 trace_indices[e.core_id]++;
+                
+//                 if (cycle_count > 1) {
+//                     // Operation takes multiple cycles, block the core
+//                     blocked[e.core_id] = true;
+//                     event_queue.push({global_cycles + cycle_count - 1 , e.core_id, e.trace_idx, true});
+//                 } else if (trace_indices[e.core_id] < traces[e.core_id].size()) {
+//                     // Operation took 1 cycle (cache hit), schedule next operation
+//                     event_queue.push({global_cycles + 1, e.core_id, trace_indices[e.core_id], false});
+//                 }
+//             }
+//         }
+//         }
+//     }
+    
+//     out << "\nSimulation Results:\n";
+//     for (int i = 0; i < 4; ++i) {
+//         cores[i]->print_stats(out);
+//     }
+    
+//     out << "Overall Bus Summary:\n";
+//     out << "  Total Bus Transactions: " << bus_manager.bus_transactions << "\n";
+//     int total_data_traffic = 0;
+//     for (int i = 0; i < 4; ++i) {
+//         total_data_traffic += cores[i]->data_traffic_bytes;
+//     }
+//     out << "  Total Bus Traffic (Bytes): " << total_data_traffic << "\n";
+//     out << "------------------------\n";
+    
+//     int max_cycles = 0;
+//     for (int i = 0; i < 4; ++i) {
+//         max_cycles = max(max_cycles, cores[i]->total_cycles);
+//     }
+//     out << "Maximum execution time: " << max_cycles << " cycles\n";
+//     out << "Total global cycles: " << global_cycles << " cycles\n";
+    
+//     out << "\nCache Utilization:\n";
+//     for (int i = 0; i < 4; ++i) {
+//         int valid_lines = 0;
+//         int total_lines = 0;
+//         double utilization = cores[i]->get_cache_utilization(valid_lines, total_lines);
+        
+//         out << "  Core " << i << ": " << fixed << setprecision(2) 
+//             << utilization << "% (" 
+//             << valid_lines << "/" << total_lines << " lines)\n";
+//     }
+    
+//     for (Cache* core : cores) {
+//         delete core;
+//     }
+    
+//     if (output_to_file) {
+//         outfile.close();
+//         cout << "Results written to " << output_file << endl;
+//     }
+
+//     return 0;
+// }

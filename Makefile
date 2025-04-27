@@ -1,5 +1,5 @@
 CC = g++
-CFLAGS = -std=c++11 -Wall -O2
+CFLAGS = -std=c++11 -Wall -O2 -g
 
 all: L1simulate
 
