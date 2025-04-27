@@ -1,0 +1,75 @@
+Simulation Parameters:
+Trace Prefix: app1
+Set Index Bits: 5
+Associativity: 2
+Block Bits: 5
+Block Size (Bytes): 32
+Number of Sets: 32
+Cache Size (KB per core): 2 KB
+MESI Protocol: Enabled
+Write Policy: Write-back, Write-allocate
+Replacement Policy: LRU
+Bus: Central snooping bus
+------------------------
+
+Simulation Results:
+Core 0 Statistics:
+  Reads: 1489888, Writes: 1007461 (Total: 2497349)
+  Read Misses: 97544, Write Misses: 11224 (Total: 108768)
+  Total execution cycles: 11968653
+  Idle cycles: 9469904 (79.12%)
+  Miss rate: 4.36%
+  Hit rate: 95.64%
+  Evictions: 108652
+  Writebacks: 26267
+  Bus Invalidations: 52
+  Data traffic (Bytes): 3481984 bytes
+------------------------
+Core 1 Statistics:
+  Reads: 1485857, Writes: 1004611 (Total: 2490468)
+  Read Misses: 97062, Write Misses: 10904 (Total: 107966)
+  Total execution cycles: 11968880
+  Idle cycles: 9478212 (79.19%)
+  Miss rate: 4.34%
+  Hit rate: 95.66%
+  Evictions: 107858
+  Writebacks: 25819
+  Bus Invalidations: 44
+  Data traffic (Bytes): 3456224 bytes
+------------------------
+Core 2 Statistics:
+  Reads: 1492629, Writes: 1016428 (Total: 2509057)
+  Read Misses: 99973, Write Misses: 14105 (Total: 114078)
+  Total execution cycles: 13111709
+  Idle cycles: 10603952 (80.87%)
+  Miss rate: 4.55%
+  Hit rate: 95.45%
+  Evictions: 113915
+  Writebacks: 29738
+  Bus Invalidations: 99
+  Data traffic (Bytes): 3653856 bytes
+------------------------
+Core 3 Statistics:
+  Reads: 1493736, Writes: 1009391 (Total: 2503127)
+  Read Misses: 98150, Write Misses: 11104 (Total: 109254)
+  Total execution cycles: 12035671
+  Idle cycles: 9532844 (79.20%)
+  Miss rate: 4.36%
+  Hit rate: 95.64%
+  Evictions: 109160
+  Writebacks: 26234
+  Bus Invalidations: 30
+  Data traffic (Bytes): 3497056 bytes
+------------------------
+Overall Bus Summary:
+  Total Bus Transactions: 440120
+  Total Bus Traffic (Bytes): 14089120
+------------------------
+Maximum execution time: 13111709 cycles
+Total global cycles: 13111708 cycles
+
+Cache Utilization:
+  Core 0: 100.00% (64/64 lines)
+  Core 1: 100.00% (64/64 lines)
+  Core 2: 100.00% (64/64 lines)
+  Core 3: 100.00% (64/64 lines)

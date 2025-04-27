@@ -31,18 +31,18 @@ class Cache;
 class BusManager {
 public:
     vector<Cache*> cores;
-    int invalidation_count = 0;
+    // int invalidation_count = 0;
     unsigned long long data_traffic_bytes = 0;
-    
+    int bus_transactions = 0;
     void register_core(Cache* c) {
         cores.push_back(c);
     }
     
-    bool broadcast_BusRd(int from_core_id, unsigned int addr, int block_size_bytes);
-    bool broadcast_BusRdX(int from_core_id, unsigned int addr, int block_size_bytes);
-    void broadcast_Invalidate(int from_core_id, unsigned int addr);
+    bool broadcast_BusRd(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation);
+    bool broadcast_BusRdX(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation);
+    void broadcast_Invalidate(int from_core_id, unsigned int addr, int& cycles_of_operation);
     
-    int get_invalidations() const { return invalidation_count; }
+    // int get_invalidations() const { return invalidation_count; }
     unsigned long long get_data_traffic() const { return data_traffic_bytes; }
 };
 
@@ -70,7 +70,7 @@ class Cache {
 public:
     Cache(int s_bits, int e_assoc, int b_bits, int id, BusManager* bus_ptr);
     int access(char op, unsigned int address);
-    bool snoop(unsigned int address, char op, int from_core, int block_size_bytes);
+    bool snoop(unsigned int address, char op, int from_core, int block_size_bytes, int& cycles_of_operation);
     void print_stats(ostream& out);
     void update_lru(CacheSet& set, int accessed_idx);
     
@@ -95,7 +95,8 @@ public:
     int misses = 0, read_misses = 0, write_misses = 0;
     int evictions = 0, writebacks = 0;
     int idle_cycles = 0, total_cycles = 0;
-
+    int invalidation_count = 0; 
+    int data_traffic_bytes = 0;
 private:
     int s, E, b;
     int num_sets;
@@ -167,8 +168,8 @@ int Cache::access(char op, unsigned int address) {
     unsigned int index = get_index(address);
     unsigned int tag = get_tag(address);
     CacheSet& set = sets[index];
-    
-    int cycles_for_operation = 0;
+    // total_cycles++; // Increment total cycles for each access
+    int cycles_for_operation = 1; 
     
     accesses++;
     if (op == 'R') reads++;
@@ -183,7 +184,7 @@ int Cache::access(char op, unsigned int address) {
         if (op == 'W') {
             if (line.state == SHARED) {
                 S_to_M++;
-                bus->broadcast_Invalidate(core_id, address);
+                bus->broadcast_Invalidate(core_id, address,cycles_for_operation);
                 line.state = MODIFIED;
                 line.dirty = true;
             } else if (line.state == EXCLUSIVE) {
@@ -219,7 +220,8 @@ int Cache::access(char op, unsigned int address) {
         
         if (op == 'R') {
             // Check if other cores have this cache line
-            bool shared = bus->broadcast_BusRd(core_id, address, block_size);
+            bool shared = bus->broadcast_BusRd(core_id, address, block_size,cycles_for_operation);
+            data_traffic_bytes += block_size; // Data traffic for BusRd
             if (shared) {
                 line.state = SHARED;
                 line.dirty = false;
@@ -234,7 +236,8 @@ int Cache::access(char op, unsigned int address) {
                 idle_cycles += 100;
             }
         } else { // Write
-            bus->broadcast_BusRdX(core_id, address, block_size);
+            bus->broadcast_BusRdX(core_id, address, block_size,cycles_for_operation);
+            data_traffic_bytes += block_size; // Data traffic for BusRdX
             line.state = MODIFIED;
             line.dirty = true;
             cycles_for_operation += 100; // Memory read takes 100 cycles
@@ -248,7 +251,7 @@ int Cache::access(char op, unsigned int address) {
     return cycles_for_operation;
 }
 
-bool Cache::snoop(unsigned int address, char op, int from_core, int block_size_bytes) {
+bool Cache::snoop(unsigned int address, char op, int from_core, int block_size_bytes, int& cycles_of_operation) {
     unsigned int index = get_index(address);
     unsigned int tag = get_tag(address);
     CacheSet& set = sets[index];
@@ -274,22 +277,34 @@ bool Cache::snoop(unsigned int address, char op, int from_core, int block_size_b
             line.state = SHARED;
             line.dirty = false; // Write back to memory
             writebacks++; // Need to write back data to memory
+            cycles_of_operation += 100; // Memory write takes 100 cycles
+            idle_cycles+=100;
+            data_traffic_bytes+=block_size_bytes;
             shared = true;
         }
     } else if (op == 'W') { // BusRdX
         if (line.state == SHARED) {
             S_to_I++;
+            invalidation_count++;
+            shared = true;
             line.state = INVALID;
             line.valid = false;
         } else if (line.state == EXCLUSIVE) {
             E_to_I++;
+            shared = true;
+            invalidation_count++;
             line.state = INVALID;
             line.valid = false;
         } else if (line.state == MODIFIED) {
             M_to_I++;
+            invalidation_count++;
             if (line.dirty) {
                 writebacks++; // Need to write back data to memory
+                cycles_of_operation += 100; // Memory write takes 100 cycles
+                idle_cycles+=100;
+                data_traffic_bytes+=block_size;
             }
+            shared = true;
             line.state = INVALID;
             line.valid = false;
             line.dirty = false;
@@ -297,16 +312,25 @@ bool Cache::snoop(unsigned int address, char op, int from_core, int block_size_b
     } else if (op == 'I') { // Invalidate operation
         if (line.state == SHARED) {
             S_to_I++;
+            shared = true;
             line.state = INVALID;
+            invalidation_count++;
             line.valid = false;
         } else if (line.state == EXCLUSIVE) {
             E_to_I++;
+            shared = true;
             line.state = INVALID;
             line.valid = false;
+            invalidation_count++;
         } else if (line.state == MODIFIED) {
             M_to_I++;
+            invalidation_count++;
+            shared = true;
             if (line.dirty) {
                 writebacks++; // Need to write back data to memory
+                cycles_of_operation += 100; // Memory write takes 100 cycles
+                idle_cycles+=100;
+                data_traffic_bytes+=block_size;
             }
             line.state = INVALID;
             line.valid = false;
@@ -327,17 +351,19 @@ void Cache::print_stats(ostream& out) {
     out << "  Hit rate: " << fixed << setprecision(2) << (accesses ? (accesses - misses) * 100.0 / accesses : 0.0) << "%\n";
     out << "  Evictions: " << evictions << "\n";
     out << "  Writebacks: " << writebacks << "\n";
-    out << "  MESI transitions: M→S: " << M_to_S << ", M→I: " << M_to_I << ", E→S: " << E_to_S << 
-           ", E→M: " << E_to_M << ", E→I: " << E_to_I << ", S→M: " << S_to_M << ", S→I: " << S_to_I << "\n";
+    out << "  Bus Invalidations: " << invalidation_count << "\n";  
+    out << "  Data traffic (Bytes): " << data_traffic_bytes << " bytes\n";  
+    // out << "  MESI transitions: M→S: " << M_to_S << ", M→I: " << M_to_I << ", E→S: " << E_to_S << 
+    //        ", E→M: " << E_to_M << ", E→I: " << E_to_I << ", S→M: " << S_to_M << ", S→I: " << S_to_I << "\n";
     out << "------------------------\n";
 }
 
-bool BusManager::broadcast_BusRd(int from_core_id, unsigned int addr, int block_size_bytes) {
+bool BusManager::broadcast_BusRd(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation) {
     bool shared = false;
-    
+    bus_transactions++;
     for (Cache* core : cores) {
         if (core->core_id != from_core_id) {
-            if (core->snoop(addr, 'R', from_core_id, block_size_bytes)) {
+            if (core->snoop(addr, 'R', from_core_id, block_size_bytes, cycles_of_operation)) {
                 shared = true;
                 data_traffic_bytes += block_size_bytes;
             }
@@ -347,27 +373,29 @@ bool BusManager::broadcast_BusRd(int from_core_id, unsigned int addr, int block_
     return shared;
 }
 
-bool BusManager::broadcast_BusRdX(int from_core_id, unsigned int addr, int block_size_bytes) {
+bool BusManager::broadcast_BusRdX(int from_core_id, unsigned int addr, int block_size_bytes, int& cycles_of_operation) {
     bool shared = false;
-    
+    bus_transactions++;
     for (Cache* core : cores) {
         if (core->core_id != from_core_id) {
-            if (core->snoop(addr, 'W', from_core_id, block_size_bytes)) {
+            if (core->snoop(addr, 'W', from_core_id, block_size_bytes, cycles_of_operation)) {
                 shared = true;
-                data_traffic_bytes += block_size_bytes;
+                // data_traffic_bytes += block_size_bytes;
             }
         }
+        data_traffic_bytes += block_size_bytes; // Always add data traffic for BusRdX
     }
     
     return shared;
 }
 
-void BusManager::broadcast_Invalidate(int from_core_id, unsigned int addr) {
+void BusManager::broadcast_Invalidate(int from_core_id, unsigned int addr, int& cycles_of_operation) {
+    bus_transactions++;
     for (Cache* core : cores) {
         if (core->core_id != from_core_id) {
-            if (core->snoop(addr, 'I', from_core_id, 0)) {
+            if (core->snoop(addr, 'I', from_core_id, 0, cycles_of_operation)) {
                 // If the core had a valid copy
-                invalidation_count++;
+                
             }
         }
     }
@@ -463,12 +491,18 @@ int main(int argc, char* argv[]) {
     
     ostream& out = output_to_file ? outfile : cout;
     
-    out << "Cache Simulator Configuration:\n";
-    out << "  Application: " << tracefile_prefix << "\n";
-    out << "  Sets per cache: " << (1 << s_bits) << " (s = " << s_bits << ")\n";
-    out << "  Associativity: " << E_assoc << "\n";
-    out << "  Block size: " << (1 << b_bits) << " bytes (b = " << b_bits << ")\n";
-    out << "  Cache size per core: " << ((1 << s_bits) * E_assoc * (1 << b_bits)) << " bytes\n";
+    out << "Simulation Parameters:\n";
+    out << "Trace Prefix: " << tracefile_prefix << "\n";
+    out << "Set Index Bits: " << s_bits << "\n";
+    out << "Associativity: " << E_assoc << "\n";
+    out << "Block Bits: " << b_bits << "\n";
+    out << "Block Size (Bytes): " << (1 << b_bits) << "\n";
+    out << "Number of Sets: " << (1 << s_bits) << "\n";
+    out << "Cache Size (KB per core): " << ((1 << s_bits) * E_assoc * (1 << b_bits)) / 1024 << " KB\n";
+    out << "MESI Protocol: Enabled\n";
+    out << "Write Policy: Write-back, Write-allocate\n";
+    out << "Replacement Policy: LRU\n";
+    out << "Bus: Central snooping bus\n";
     out << "------------------------\n";
     
     BusManager bus_manager;
@@ -567,9 +601,13 @@ int main(int argc, char* argv[]) {
         cores[i]->print_stats(out);
     }
     
-    out << "Bus Statistics:\n";
-    out << "  Invalidations: " << bus_manager.get_invalidations() << "\n";
-    out << "  Data traffic: " << bus_manager.get_data_traffic() << " bytes\n";
+    out << "Overall Bus Summary:\n";
+    out << "  Total Bus Transactions: " << bus_manager.bus_transactions << "\n";
+    int total_data_traffic = 0;
+    for (int i = 0; i < 4; ++i) {
+        total_data_traffic += cores[i]->data_traffic_bytes;
+    }
+    out << "  Total Bus Traffic (Bytes): " << total_data_traffic << "\n";
     out << "------------------------\n";
     
     int max_cycles = 0;
