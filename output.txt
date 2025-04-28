@@ -10,66 +10,64 @@ MESI Protocol: Enabled
 Write Policy: Write-back, Write-allocate
 Replacement Policy: LRU
 Bus: Central snooping bus
-------------------------
 
 Simulation Results:
 Core 0 Statistics:
-  Reads: 13, Writes: 10 (Total: 23)
-  Read Misses: 7, Write Misses: 3 (Total: 10)
-  Total execution cycles: 1023
-  Idle cycles: 1000 (97.75%)
-  Miss rate: 43.48%
-  Hit rate: 56.52%
+  Reads: 1, Writes: 0 (Total: 1)
+  Read Misses: 1, Write Misses: 0 (Total: 1)
+  Total execution cycles: 101
+  Idle cycles: 100 (99.01%)
+  Miss rate: 100.00%
+  Hit rate: 0.00%
   Evictions: 0
   Writebacks: 0
   Bus Invalidations: 0
-  Data traffic (Bytes): 544 bytes
-------------------------
+  Data traffic (Bytes): 64 bytes
+
 Core 1 Statistics:
-  Reads: 2, Writes: 22 (Total: 24)
-  Read Misses: 2, Write Misses: 8 (Total: 10)
-  Total execution cycles: 2159
-  Idle cycles: 2135 (98.89%)
-  Miss rate: 41.67%
-  Hit rate: 58.33%
+  Reads: 0, Writes: 1 (Total: 1)
+  Read Misses: 0, Write Misses: 1 (Total: 1)
+  Total execution cycles: 202
+  Idle cycles: 201 (99.50%)
+  Miss rate: 100.00%
+  Hit rate: 0.00%
   Evictions: 0
   Writebacks: 0
   Bus Invalidations: 0
-  Data traffic (Bytes): 352 bytes
-------------------------
+  Data traffic (Bytes): 32 bytes
+
 Core 2 Statistics:
-  Reads: 12, Writes: 11 (Total: 23)
-  Read Misses: 8, Write Misses: 3 (Total: 11)
-  Total execution cycles: 3175
-  Idle cycles: 3152 (99.28%)
-  Miss rate: 47.83%
-  Hit rate: 52.17%
+  Reads: 1, Writes: 0 (Total: 1)
+  Read Misses: 1, Write Misses: 0 (Total: 1)
+  Total execution cycles: 303
+  Idle cycles: 302 (99.67%)
+  Miss rate: 100.00%
+  Hit rate: 0.00%
   Evictions: 0
   Writebacks: 0
   Bus Invalidations: 0
-  Data traffic (Bytes): 608 bytes
-------------------------
+  Data traffic (Bytes): 64 bytes
+
 Core 3 Statistics:
-  Reads: 2, Writes: 21 (Total: 23)
-  Read Misses: 2, Write Misses: 7 (Total: 9)
-  Total execution cycles: 3825
-  Idle cycles: 3802 (99.40%)
-  Miss rate: 39.13%
-  Hit rate: 60.87%
+  Reads: 0, Writes: 1 (Total: 1)
+  Read Misses: 0, Write Misses: 1 (Total: 1)
+  Total execution cycles: 404
+  Idle cycles: 403 (99.75%)
+  Miss rate: 100.00%
+  Hit rate: 0.00%
   Evictions: 0
   Writebacks: 0
   Bus Invalidations: 0
-  Data traffic (Bytes): 288 bytes
-------------------------
+  Data traffic (Bytes): 32 bytes
+
 Overall Bus Summary:
-  Total Bus Transactions: 6381
-  Total Bus Traffic (Bytes): 1792
-------------------------
-Maximum execution time: 3825 cycles
-Total global cycles: 3816 cycles
+  Total Bus Transactions: 4
+  Total Bus Traffic (Bytes): 192
+Maximum execution time: 404 cycles
+Total global cycles: 404 cycles
 
 Cache Utilization:
-  Core 0: 15.62% (10/64 lines)
-  Core 1: 15.62% (10/64 lines)
-  Core 2: 17.19% (11/64 lines)
-  Core 3: 14.06% (9/64 lines)
+  Core 0: 1.56% (1/64 lines)
+  Core 1: 1.56% (1/64 lines)
+  Core 2: 1.56% (1/64 lines)
+  Core 3: 1.56% (1/64 lines)
