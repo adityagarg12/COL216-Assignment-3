@@ -22,7 +22,7 @@ Core 0 Statistics:
   Evictions: 0
   Writebacks: 0
   Bus Invalidations: 0
-  Data traffic (Bytes): 64 bytes
+  Data traffic (Bytes): 32 bytes
 
 Core 1 Statistics:
   Reads: 0, Writes: 1 (Total: 1)
@@ -33,7 +33,7 @@ Core 1 Statistics:
   Hit rate: 0.00%
   Evictions: 0
   Writebacks: 0
-  Bus Invalidations: 0
+  Bus Invalidations: 1
   Data traffic (Bytes): 32 bytes
 
 Core 2 Statistics:
@@ -46,7 +46,7 @@ Core 2 Statistics:
   Evictions: 0
   Writebacks: 0
   Bus Invalidations: 0
-  Data traffic (Bytes): 64 bytes
+  Data traffic (Bytes): 32 bytes
 
 Core 3 Statistics:
   Reads: 0, Writes: 1 (Total: 1)
@@ -57,12 +57,13 @@ Core 3 Statistics:
   Hit rate: 0.00%
   Evictions: 0
   Writebacks: 0
-  Bus Invalidations: 0
+  Bus Invalidations: 1
   Data traffic (Bytes): 32 bytes
 
 Overall Bus Summary:
   Total Bus Transactions: 4
-  Total Bus Traffic (Bytes): 192
+  Total Bus Traffic (Bytes): 128
+
 Maximum execution time: 404 cycles
 Total global cycles: 404 cycles
 

@@ -294,6 +294,7 @@ int Cache::access(char op, unsigned int address) {
                 idle_cycles++;
                 return -1; // Special return value to indicate retry needed
             }
+            line.valid = true;
             line.tag = tag;
             misses++;
             read_misses++;
@@ -331,6 +332,7 @@ int Cache::access(char op, unsigned int address) {
             }
             invalidation_count++; 
             line.tag = tag;
+            line.valid = true;
             misses++;
             write_misses++;
             writes++;
@@ -367,6 +369,8 @@ bool Cache::snoop(unsigned int address, char op, int from_core, int block_size_b
     if (op == 'R') { // BusRd
         if (line.state == EXCLUSIVE) {
             E_to_S++;
+            printf("DEBUG: Cache line in EXCLUSIVE state from core %d\n", from_core);
+            printf("DEBUG: Cache line in EXCLUSIVE state in core %d\n", core_id);
             data_traffic_bytes += block_size_bytes; // Outgoing data traffic for BusRd
             line.state = SHARED;
             shared = true;
@@ -704,7 +708,7 @@ int main(int argc, char* argv[]) {
     }
     
     while (!event_queue.empty()) {
-        printf("DEBUG: Global Cycle: %d\n", global_cycles);
+        // printf("DEBUG: Global Cycle: %d\n", global_cycles);
         Event e = event_queue.top();
         event_queue.pop();
         
