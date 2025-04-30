@@ -116,6 +116,7 @@ public:
     int misses = 0, read_misses = 0, write_misses = 0;
     int evictions = 0, writebacks = 0;
     int idle_cycles = 0, total_cycles = 0;
+    int execution_cycles = 0;
     int invalidation_count = 0; 
     int data_traffic_bytes = 0;
 private:
@@ -221,6 +222,7 @@ int Cache::access(char op, unsigned int address) {
                     return -1; // Special return value to indicate retry needed
                 }
                 invalidation_count++;
+                // execution_cycles++;
                 cycles_for_operation += temp_cycles; //Not needed i guesss
                 // bus->broadcast_Invalidate(core_id, address,cycles_for_operation);
                 line.state = MODIFIED;
@@ -234,10 +236,12 @@ int Cache::access(char op, unsigned int address) {
             // If already MODIFIED, stay in MODIFIED
             writes++;
             accesses++;
+            execution_cycles++;
         }
         else {
             reads++;
             accesses++;
+            execution_cycles++;
         }
 
         
@@ -261,6 +265,7 @@ int Cache::access(char op, unsigned int address) {
                     return -1; // Special return value to indicate retry needed
                 }
                 evictions++;
+                execution_cycles+=100;
                 writebacks++;
                 data_traffic_bytes += block_size; // Data traffic for writeback
                 // cycles_for_operation += 100; // Memory write takes 100 cycles
@@ -369,17 +374,23 @@ bool Cache::snoop(unsigned int address, char op, int from_core, int block_size_b
     if (op == 'R') { // BusRd
         if (line.state == EXCLUSIVE) {
             E_to_S++;
-            printf("DEBUG: Cache line in EXCLUSIVE state from core %d\n", from_core);
-            printf("DEBUG: Cache line in EXCLUSIVE state in core %d\n", core_id);
+            // printf("DEBUG: Cache line in EXCLUSIVE state from core %d\n", from_core);
+            // printf("DEBUG: Cache line in EXCLUSIVE state in core %d\n", core_id);
             data_traffic_bytes += block_size_bytes; // Outgoing data traffic for BusRd
+            int words_per_block = block_size / 4; // 4 bytes per word
+            execution_cycles += words_per_block * 2;
             line.state = SHARED;
             shared = true;
         } else if (line.state == SHARED) {
             // Stay in SHARED
+            int words_per_block = block_size / 4; // 4 bytes per word
+            execution_cycles += words_per_block * 2;
             data_traffic_bytes += block_size_bytes; // Outgoing data traffic for BusRd
             shared = true;
         } else if (line.state == MODIFIED) {
             M_to_S++;
+            int words_per_block = block_size / 4; // 4 bytes per word
+            execution_cycles += words_per_block * 2;
             memwrite_flag = true; // Need to write back to memory
             line.state = SHARED;
             line.dirty = false; // Write back to memory
@@ -408,6 +419,7 @@ bool Cache::snoop(unsigned int address, char op, int from_core, int block_size_b
                 writebacks++; // Need to write back data to memory
                 // cycles_of_operation += 100; // Memory write takes 100 cycles //CYCLES DUE TO WRITEBACK SHOULD NOT BE ADDED TO EXECUTION CYCLES OF REQUESTER
                 // idle_cycles+=100;
+                execution_cycles += 100; // Memory write takes 100 cycles
                 data_traffic_bytes+=block_size;
             }
             shared = true;
@@ -429,16 +441,18 @@ bool Cache::snoop(unsigned int address, char op, int from_core, int block_size_b
 
 void Cache::print_stats(ostream& out) {
     out << "Core " << core_id << " Statistics:\n";
-    out << "  Reads: " << reads << ", Writes: " << writes << " (Total: " << accesses << ")\n";
-    out << "  Read Misses: " << read_misses << ", Write Misses: " << write_misses << " (Total: " << misses << ")\n";
-    out << "  Total execution cycles: " << total_cycles << "\n";
-    out << "  Idle cycles: " << idle_cycles << " (" << fixed << setprecision(2) << (total_cycles ? idle_cycles * 100.0 / total_cycles : 0.0) << "%)\n";
-    out << "  Miss rate: " << fixed << setprecision(2) << (accesses ? misses * 100.0 / accesses : 0.0) << "%\n";
-    out << "  Hit rate: " << fixed << setprecision(2) << (accesses ? (accesses - misses) * 100.0 / accesses : 0.0) << "%\n";
-    out << "  Evictions: " << evictions << "\n";
-    out << "  Writebacks: " << writebacks << "\n";
-    out << "  Bus Invalidations: " << invalidation_count << "\n";  
-    out << "  Data traffic (Bytes): " << data_traffic_bytes << " bytes\n";  
+    out << "Total Instructions: " << accesses << "\n";
+    out << "Total Reads: " << reads << "\n";
+    out << "Total Writes: " << writes << "\n";
+    out << "Total execution cycles: " << execution_cycles << "\n";  
+    out << "Idle cycles: " << idle_cycles << "\n";
+    out << "Cache Misses: "<< misses << "\n";
+    out << "Cache Miss rate: " << fixed << setprecision(2) << (accesses ? misses * 100.0 / accesses : 0.0) << "%\n";
+    // out << "  Hit rate: " << fixed << setprecision(2) << (accesses ? (accesses - misses) * 100.0 / accesses : 0.0) << "%\n";
+    out << "Cache Evictions: " << evictions << "\n";
+    out << "Writebacks: " << writebacks << "\n";
+    out << "Bus Invalidations: " << invalidation_count << "\n";  
+    out << "Data Traffic (Bytes): " << data_traffic_bytes << " bytes\n";  
     // out << "  MESI transitions: M→S: " << M_to_S << ", M→I: " << M_to_I << ", E→S: " << E_to_S << 
     //        ", E→M: " << E_to_M << ", E→I: " << E_to_I << ", S→M: " << S_to_M << ", S→I: " << S_to_I << "\n";
     out << "\n";
@@ -748,7 +762,6 @@ int main(int argc, char* argv[]) {
         }
     }
     
-    out << "\nSimulation Results:\n";
     for (int i = 0; i < 4; ++i) {
         cores[i]->print_stats(out);
     }
