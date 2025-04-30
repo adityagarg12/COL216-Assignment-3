@@ -262,6 +262,7 @@ int Cache::access(char op, unsigned int address) {
             if (line.dirty) {
                 if(!bus->try_acquire_bus(core_id, address, total_cycles)) {
                     // Bus is busy, operation must be retried
+                    idle_cycles++;                    
                     return -1; // Special return value to indicate retry needed
                 }
                 evictions++;
@@ -273,7 +274,7 @@ int Cache::access(char op, unsigned int address) {
                 //EVICTING A DIRTY LINE IS NOT COUNTED IN CYCLES 
 
                 bus->release_bus(total_cycles + 100); // Release bus after writeback
-                idle_cycles-- ; // Because when it will send BusRd or BusRdX , it will find bus busy for current cycle also and we don't want to count that as idle cycle
+                // idle_cycles-- ; // Because when it will send BusRd or BusRdX , it will find bus busy for current cycle also and we don't want to count that as idle cycle
             }
             else {
                 // If the line is not dirty, we can just invalidate it
@@ -296,7 +297,9 @@ int Cache::access(char op, unsigned int address) {
             // }
             if (busy_bus_flag) {
                 // Bus was busy, need to retry
-                idle_cycles++;
+                if(bus->current_bus_owner != core_id) {
+                    idle_cycles++;                    
+                }               
                 return -1; // Special return value to indicate retry needed
             }
             line.valid = true;
@@ -312,13 +315,15 @@ int Cache::access(char op, unsigned int address) {
                 // Fetch from another cache (words_per_block * 2 cycles)
                 int words_per_block = block_size / 4; // 4 bytes per word
                 cycles_for_operation += words_per_block * 2;
-                idle_cycles += words_per_block * 2;
+                execution_cycles += words_per_block * 2;
+                // idle_cycles += words_per_block * 2;
             } else {
                 line.state = EXCLUSIVE;
                 line.dirty = false;
                 cycles_for_operation += 100; // Memory read takes 100 cycles
                 // data_traffic_bytes += block_size; // Data traffic for memory read
-                idle_cycles += 100;
+                // idle_cycles += 100;
+                execution_cycles += 100; // Memory read takes 100 cycles
             }
         } else { // Write
 
@@ -332,7 +337,10 @@ int Cache::access(char op, unsigned int address) {
 
             if (busy_bus_flag) {
                 // Bus was busy, need to retry
-                idle_cycles++;
+                if(bus->current_bus_owner != core_id) {
+                    idle_cycles++;                    
+                }
+                // idle_cycles++;
                 return -1; // Special return value to indicate retry needed
             }
             invalidation_count++; 
@@ -346,7 +354,8 @@ int Cache::access(char op, unsigned int address) {
             line.state = MODIFIED;
             line.dirty = true;
             cycles_for_operation += 100; // Memory read takes 100 cycles
-            idle_cycles += cycles_for_operation; //Idle cycles increase by 100 due to memory read and 100 if writeback is needed
+            // idle_cycles += cycles_for_operation; //Idle cycles increase by 100 due to memory read and 100 if writeback is needed
+            execution_cycles += cycles_for_operation; // Memory read takes 100 cycles
         }
         
         update_lru(set, victim);
@@ -377,20 +386,20 @@ bool Cache::snoop(unsigned int address, char op, int from_core, int block_size_b
             // printf("DEBUG: Cache line in EXCLUSIVE state from core %d\n", from_core);
             // printf("DEBUG: Cache line in EXCLUSIVE state in core %d\n", core_id);
             data_traffic_bytes += block_size_bytes; // Outgoing data traffic for BusRd
-            int words_per_block = block_size / 4; // 4 bytes per word
-            execution_cycles += words_per_block * 2;
+         
+            
             line.state = SHARED;
             shared = true;
         } else if (line.state == SHARED) {
             // Stay in SHARED
-            int words_per_block = block_size / 4; // 4 bytes per word
-            execution_cycles += words_per_block * 2;
+            
+            
             data_traffic_bytes += block_size_bytes; // Outgoing data traffic for BusRd
             shared = true;
         } else if (line.state == MODIFIED) {
             M_to_S++;
-            int words_per_block = block_size / 4; // 4 bytes per word
-            execution_cycles += words_per_block * 2;
+           
+            // idle_cycles += words_per_block * 2;
             memwrite_flag = true; // Need to write back to memory
             line.state = SHARED;
             line.dirty = false; // Write back to memory
@@ -419,7 +428,7 @@ bool Cache::snoop(unsigned int address, char op, int from_core, int block_size_b
                 writebacks++; // Need to write back data to memory
                 // cycles_of_operation += 100; // Memory write takes 100 cycles //CYCLES DUE TO WRITEBACK SHOULD NOT BE ADDED TO EXECUTION CYCLES OF REQUESTER
                 // idle_cycles+=100;
-                execution_cycles += 100; // Memory write takes 100 cycles
+                // execution_cycles += 100; // Memory write takes 100 cycles
                 data_traffic_bytes+=block_size;
             }
             shared = true;
@@ -444,7 +453,7 @@ void Cache::print_stats(ostream& out) {
     out << "Total Instructions: " << accesses << "\n";
     out << "Total Reads: " << reads << "\n";
     out << "Total Writes: " << writes << "\n";
-    out << "Total execution cycles: " << execution_cycles << "\n";  
+    out << "Total execution cycles: " << total_cycles - idle_cycles << "\n";  
     out << "Idle cycles: " << idle_cycles << "\n";
     out << "Cache Misses: "<< misses << "\n";
     out << "Cache Miss rate: " << fixed << setprecision(2) << (accesses ? misses * 100.0 / accesses : 0.0) << "%\n";
@@ -657,12 +666,12 @@ int main(int argc, char* argv[]) {
     out << "Block Bits: " << b_bits << "\n";
     out << "Block Size (Bytes): " << (1 << b_bits) << "\n";
     out << "Number of Sets: " << (1 << s_bits) << "\n";
-    out << "Cache Size (KB per core): " << ((1 << s_bits) * E_assoc * (1 << b_bits)) / 1024 << " KB\n";
+    out << "Cache Size (KB per core): " << fixed << setprecision(2) << ((1 << s_bits) * E_assoc * (1 << b_bits)) / 1024.0 << " KB\n";
     out << "MESI Protocol: Enabled\n";
     out << "Write Policy: Write-back, Write-allocate\n";
     out << "Replacement Policy: LRU\n";
     out << "Bus: Central snooping bus\n";
-    // out << "------------------------\n";
+    out << "\n";
     
     BusManager bus_manager;
     vector<Cache*> cores;
@@ -767,31 +776,31 @@ int main(int argc, char* argv[]) {
     }
     
     out << "Overall Bus Summary:\n";
-    out << "  Total Bus Transactions: " << bus_manager.bus_transactions << "\n";
+    out << "Total Bus Transactions: " << bus_manager.bus_transactions << "\n";
     int total_data_traffic = 0;
     for (int i = 0; i < 4; ++i) {
         total_data_traffic += cores[i]->data_traffic_bytes;
     }
-    out << "  Total Bus Traffic (Bytes): " << total_data_traffic << "\n";
-    out << "\n";
+    out << "Total Bus Traffic (Bytes): " << total_data_traffic << "\n";
+    // out << "\n";
     
-    int max_cycles = 0;
-    for (int i = 0; i < 4; ++i) {
-        max_cycles = max(max_cycles, cores[i]->execution_cycles);
-    }
-    out << "Maximum execution time: " << max_cycles << " cycles\n";
-    out << "Total global cycles: " << global_cycles << " cycles\n";
+    // int max_cycles = 0;
+    // for (int i = 0; i < 4; ++i) {
+    //     max_cycles = max(max_cycles, cores[i]->total_cycles - cores[i]->idle_cycles);
+    // }
+    // out << "Maximum execution time: " << max_cycles << " cycles\n";
+    // out << "Total global cycles: " << global_cycles << " cycles\n";
     
-    out << "\nCache Utilization:\n";
-    for (int i = 0; i < 4; ++i) {
-        int valid_lines = 0;
-        int total_lines = 0;
-        double utilization = cores[i]->get_cache_utilization(valid_lines, total_lines);
+    // out << "\nCache Utilization:\n";
+    // for (int i = 0; i < 4; ++i) {
+    //     int valid_lines = 0;
+    //     int total_lines = 0;
+    //     double utilization = cores[i]->get_cache_utilization(valid_lines, total_lines);
         
-        out << "  Core " << i << ": " << fixed << setprecision(2) 
-            << utilization << "% (" 
-            << valid_lines << "/" << total_lines << " lines)\n";
-    }
+    //     out << "  Core " << i << ": " << fixed << setprecision(2) 
+    //         << utilization << "% (" 
+    //         << valid_lines << "/" << total_lines << " lines)\n";
+    // }
     
     for (Cache* core : cores) {
         delete core;
