@@ -782,25 +782,6 @@ int main(int argc, char* argv[]) {
         total_data_traffic += cores[i]->data_traffic_bytes;
     }
     out << "Total Bus Traffic (Bytes): " << total_data_traffic << "\n";
-    // out << "\n";
-    
-    // int max_cycles = 0;
-    // for (int i = 0; i < 4; ++i) {
-    //     max_cycles = max(max_cycles, cores[i]->total_cycles - cores[i]->idle_cycles);
-    // }
-    // out << "Maximum execution time: " << max_cycles << " cycles\n";
-    // out << "Total global cycles: " << global_cycles << " cycles\n";
-    
-    // out << "\nCache Utilization:\n";
-    // for (int i = 0; i < 4; ++i) {
-    //     int valid_lines = 0;
-    //     int total_lines = 0;
-    //     double utilization = cores[i]->get_cache_utilization(valid_lines, total_lines);
-        
-    //     out << "  Core " << i << ": " << fixed << setprecision(2) 
-    //         << utilization << "% (" 
-    //         << valid_lines << "/" << total_lines << " lines)\n";
-    // }
     
     for (Cache* core : cores) {
         delete core;
