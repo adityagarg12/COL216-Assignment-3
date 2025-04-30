@@ -510,6 +510,63 @@ Our performance analysis reveals several important insights:
 
 These findings highlight the importance of properly tuning cache parameters to match the characteristics of the target workload. The most significant performance gains for this application would come from selecting higher associativity, moderate block sizes (32B), and sufficient cache capacity (at least 8KB).
 
+\section{Interesting Traces}
+
+\vspace{-5pt} % Adjust the space between section title and content
+
+\subsection*{Objective}
+\vspace{-3pt}
+This trace demonstrates \textbf{false sharing} where multiple cores access different words in the same cache block, causing unnecessary coherence traffic.
+
+\vspace{5pt}
+\subsection*{Trace Details}
+\vspace{-3pt}
+Assuming a 64-byte cache block ($b = 6$), the following accesses map to the same block:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Core 0:}
+    \begin{verbatim}
+    W 0x1000
+    W 0x1004
+    \end{verbatim}
+    \item \textbf{Core 1:}
+    \begin{verbatim}
+    R 0x1020
+    W 0x1024
+    \end{verbatim}
+    \item \textbf{Core 2:}
+    \begin{verbatim}
+    R 0x1040
+    W 0x1044
+    \end{verbatim}
+    \item \textbf{Core 3:}
+    \begin{verbatim}
+    R 0x1008
+    W 0x1028
+    \end{verbatim}
+\end{itemize}
+
+\vspace{-5pt}
+All accesses lie within the same 64-byte cache block (0x1000 to 0x103F).
+
+\vspace{5pt}
+\subsection*{Coherence Behavior}
+\vspace{-3pt}
+The false sharing causes:
+\begin{itemize}[noitemsep]
+    \item Invalidations and cache-to-cache transfers between cores.
+    \item Unnecessary bus traffic despite no actual data sharing.
+    \item Reduced performance due to excessive coherence protocol activity.
+\end{itemize}
+
+\vspace{5pt}
+\subsection*{Simulation Parameters}
+\vspace{-3pt}
+\begin{itemize}[noitemsep]
+    \item $s = 0$, $E = 4$, $b = 6$ (64-byte block)
+    \item 4 cores with MESI protocol, write-back and write-allocate cache policies
+\end{itemize}
+
 \section{Conclusion}
 
 This report presented an L1 cache simulator for a multicore system using the MESI coherence protocol. The simulator effectively models cache operations, bus contention, and coherence events, while tracking key metrics like execution cycles, idle time, and data traffic.
