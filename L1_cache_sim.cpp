@@ -323,7 +323,7 @@ int Cache::access(char op, unsigned int address) {
         } else { // Write
 
             bool busy_bus_flag = false;
-            bool result = bus->broadcast_BusRdX(core_id, address, block_size,cycles_for_operation,total_cycles,busy_bus_flag);
+            bus->broadcast_BusRdX(core_id, address, block_size,cycles_for_operation,total_cycles,busy_bus_flag);
             
             // if (cycles_for_operation == 0) {
             //     // Bus was busy, need to retry
@@ -687,7 +687,7 @@ int main(int argc, char* argv[]) {
         
         string line;
         while (getline(trace_file, line)) {
-            if (line.empty() || line[0] != 'R' && line[0] != 'W') continue;
+            if (line.empty() || (line[0] != 'R' && line[0] != 'W')) continue;
             
             char op = line[0];
             unsigned int addr;
@@ -777,7 +777,7 @@ int main(int argc, char* argv[]) {
     
     int max_cycles = 0;
     for (int i = 0; i < 4; ++i) {
-        max_cycles = max(max_cycles, cores[i]->total_cycles);
+        max_cycles = max(max_cycles, cores[i]->execution_cycles);
     }
     out << "Maximum execution time: " << max_cycles << " cycles\n";
     out << "Total global cycles: " << global_cycles << " cycles\n";
