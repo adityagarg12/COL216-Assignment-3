@@ -1,0 +1,68 @@
+Simulation Parameters:
+Trace Prefix: mine1
+Set Index Bits: 6
+Associativity: 4
+Block Bits: 2
+Block Size (Bytes): 4
+Number of Sets: 64
+Cache Size (KB per core): 1.00 KB
+MESI Protocol: Enabled
+Write Policy: Write-back, Write-allocate
+Replacement Policy: LRU
+Bus: Central snooping bus
+
+Core 0 Statistics:
+Total Instructions: 2
+Total Reads: 0
+Total Writes: 2
+Total execution cycles: 202
+Idle cycles: 0
+Cache Misses: 2
+Cache Miss rate: 100.00%
+Cache Evictions: 0
+Writebacks: 0
+Bus Invalidations: 2
+Data Traffic (Bytes): 8 bytes
+
+Core 1 Statistics:
+Total Instructions: 2
+Total Reads: 1
+Total Writes: 1
+Total execution cycles: 202
+Idle cycles: 202
+Cache Misses: 2
+Cache Miss rate: 100.00%
+Cache Evictions: 0
+Writebacks: 0
+Bus Invalidations: 1
+Data Traffic (Bytes): 8 bytes
+
+Core 2 Statistics:
+Total Instructions: 2
+Total Reads: 1
+Total Writes: 1
+Total execution cycles: 202
+Idle cycles: 404
+Cache Misses: 2
+Cache Miss rate: 100.00%
+Cache Evictions: 0
+Writebacks: 0
+Bus Invalidations: 1
+Data Traffic (Bytes): 8 bytes
+
+Core 3 Statistics:
+Total Instructions: 2
+Total Reads: 1
+Total Writes: 1
+Total execution cycles: 202
+Idle cycles: 606
+Cache Misses: 2
+Cache Miss rate: 100.00%
+Cache Evictions: 0
+Writebacks: 0
+Bus Invalidations: 1
+Data Traffic (Bytes): 8 bytes
+
+Overall Bus Summary:
+Total Bus Transactions: 8
+Total Bus Traffic (Bytes): 32
